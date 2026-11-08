@@ -7,7 +7,15 @@ type GameCallbacks = {
 const ROOM_WIDTH = 18;
 const ROOM_DEPTH = 12;
 const PLAYER_RADIUS = 0.38;
-const MOVE_SPEED = 4;
+const MOVEMENT = {
+  maxSpeed: 4.2,
+  acceleration: 22,
+  deceleration: 28,
+  turnSharpness: 14,
+  fixedStep: 1 / 60,
+  cameraSharpness: 10,
+  joystickDeadZone: 0.12,
+} as const;
 
 const PALETTE = {
   skin: "#f2bd88",
@@ -60,6 +68,7 @@ type CharacterRig = THREE.Group & {
     eyeRight: THREE.Mesh;
     shadow: THREE.Mesh;
     blinkTime: number;
+    velocity: THREE.Vector2;
   };
 };
 
@@ -91,9 +100,11 @@ export function startCafeGame(container: HTMLElement, playerName: string, callba
   const player = addPlayer(scene, playerName);
   const keys = new Set<string>();
   const input = new THREE.Vector2();
+  const velocity = new THREE.Vector2();
   let joystickPointer: number | undefined;
   let animationFrame = 0;
   let previousTime = performance.now();
+  let accumulator = 0;
 
   const onKeyDown = (event: KeyboardEvent) => {
     const key = event.key.toLowerCase();
@@ -109,6 +120,13 @@ export function startCafeGame(container: HTMLElement, playerName: string, callba
   window.addEventListener("keydown", onKeyDown);
   window.addEventListener("keyup", onKeyUp);
   window.addEventListener("blur", clearKeys);
+  const onVisibilityChange = () => {
+    if (document.hidden) {
+      clearKeys();
+      endJoystick();
+    }
+  };
+  window.addEventListener("visibilitychange", onVisibilityChange);
 
   const joystick = document.querySelector<HTMLElement>("#joystick");
   const stick = document.querySelector<HTMLElement>("#joystick-stick");
@@ -122,6 +140,9 @@ export function startCafeGame(container: HTMLElement, playerName: string, callba
   };
   const onJoystickEnd = (event: PointerEvent) => {
     if (event.pointerId !== joystickPointer) return;
+    endJoystick();
+  };
+  const endJoystick = () => {
     joystickPointer = undefined;
     input.set(0, 0);
     if (stick) stick.style.transform = "translate(-50%, -50%)";
@@ -134,13 +155,19 @@ export function startCafeGame(container: HTMLElement, playerName: string, callba
     const maxDistance = bounds.width * 0.32;
     const vector = new THREE.Vector2(event.clientX - centerX, event.clientY - centerY);
     if (vector.length() > maxDistance) vector.setLength(maxDistance);
-    input.set(vector.x / maxDistance, -vector.y / maxDistance);
+    const strength = vector.length() / maxDistance;
+    const deadZone = MOVEMENT.joystickDeadZone;
+    const adjustedStrength = strength <= deadZone ? 0 : (strength - deadZone) / (1 - deadZone);
+    const curvedStrength = adjustedStrength * adjustedStrength;
+    if (strength > 0) vector.setLength(curvedStrength);
+    input.set(vector.x, -vector.y);
     if (stick) stick.style.transform = `translate(calc(-50% + ${vector.x}px), calc(-50% - ${vector.y}px))`;
   };
   joystick?.addEventListener("pointerdown", onJoystickStart);
   joystick?.addEventListener("pointermove", onJoystickMove);
   joystick?.addEventListener("pointerup", onJoystickEnd);
   joystick?.addEventListener("pointercancel", onJoystickEnd);
+  window.addEventListener("pointerup", endJoystick);
 
   const resize = () => {
     const aspect = window.innerWidth / window.innerHeight;
@@ -158,17 +185,24 @@ export function startCafeGame(container: HTMLElement, playerName: string, callba
   const tick = (time: number) => {
     const delta = Math.min((time - previousTime) / 1000, 0.05);
     previousTime = time;
+    accumulator = Math.min(accumulator + delta, 0.25);
     const movement = new THREE.Vector2(
       (keys.has("d") || keys.has("arrowright") ? 1 : 0) - (keys.has("a") || keys.has("arrowleft") ? 1 : 0),
       (keys.has("w") || keys.has("arrowup") ? 1 : 0) - (keys.has("s") || keys.has("arrowdown") ? 1 : 0),
     );
     movement.add(input);
     if (movement.lengthSq() > 1) movement.normalize();
-    moveWithCollisions(player, movement, delta, colliders);
-    animatePlayer(player, movement.length(), time / 1000);
-    camera.position.x = player.position.x + 12;
-    camera.position.z = player.position.z + 14;
-    camera.lookAt(player.position.x, 0, player.position.z);
+    while (accumulator >= MOVEMENT.fixedStep) {
+      updateMovement(player, movement, velocity, MOVEMENT.fixedStep, colliders);
+      accumulator -= MOVEMENT.fixedStep;
+    }
+    const cameraAlpha = 1 - Math.exp(-MOVEMENT.cameraSharpness * delta);
+    const lookAheadX = velocity.x * 0.18;
+    const lookAheadZ = -velocity.y * 0.18;
+    camera.position.x = THREE.MathUtils.lerp(camera.position.x, player.position.x + 12 + lookAheadX, cameraAlpha);
+    camera.position.z = THREE.MathUtils.lerp(camera.position.z, player.position.z + 14 + lookAheadZ, cameraAlpha);
+    camera.lookAt(player.position.x + lookAheadX, 0, player.position.z + lookAheadZ);
+    animatePlayer(player, velocity.length() / MOVEMENT.maxSpeed, time / 1000);
     renderer.render(scene, camera);
     animationFrame = requestAnimationFrame(tick);
   };
@@ -179,6 +213,8 @@ export function startCafeGame(container: HTMLElement, playerName: string, callba
     window.removeEventListener("keydown", onKeyDown);
     window.removeEventListener("keyup", onKeyUp);
     window.removeEventListener("blur", clearKeys);
+    window.removeEventListener("visibilitychange", onVisibilityChange);
+    window.removeEventListener("pointerup", endJoystick);
     window.removeEventListener("resize", resize);
     joystick?.removeEventListener("pointerdown", onJoystickStart);
     joystick?.removeEventListener("pointermove", onJoystickMove);
@@ -322,7 +358,19 @@ function addPlayer(scene: THREE.Scene, name: string, config: CharacterConfig = {
   const label = makeLabel(name);
   label.position.set(0, 2.75, 0);
   player.add(label);
-  player.userData = { body, head, leftArm, rightArm, leftLeg, rightLeg, eyeLeft, eyeRight, shadow, blinkTime: 0 };
+  player.userData = {
+    body,
+    head,
+    leftArm,
+    rightArm,
+    leftLeg,
+    rightLeg,
+    eyeLeft,
+    eyeRight,
+    shadow,
+    blinkTime: 0,
+    velocity: new THREE.Vector2(),
+  };
   player.position.set(0, 0, 3.8);
   scene.add(player);
   return player;
@@ -382,17 +430,38 @@ function mesh(geometry: THREE.BufferGeometry, color: string): THREE.Mesh {
   return new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({ color, roughness: 0.85 }));
 }
 
-function moveWithCollisions(player: THREE.Group, direction: THREE.Vector2, delta: number, colliders: THREE.Box3[]): void {
-  const distance = MOVE_SPEED * delta;
-  const next = new THREE.Vector3(player.position.x + direction.x * distance, 0, player.position.z - direction.y * distance);
-  next.x = THREE.MathUtils.clamp(next.x, -ROOM_WIDTH / 2 + PLAYER_RADIUS, ROOM_WIDTH / 2 - PLAYER_RADIUS);
-  next.z = THREE.MathUtils.clamp(next.z, -ROOM_DEPTH / 2 + PLAYER_RADIUS, ROOM_DEPTH / 2 - PLAYER_RADIUS);
-  const candidate = new THREE.Box3(
-    new THREE.Vector3(next.x - PLAYER_RADIUS, 0, next.z - PLAYER_RADIUS),
-    new THREE.Vector3(next.x + PLAYER_RADIUS, 2.4, next.z + PLAYER_RADIUS),
-  );
-  if (!colliders.some((collider) => collider.intersectsBox(candidate))) {
-    player.position.copy(next);
+function updateMovement(
+  player: CharacterRig,
+  direction: THREE.Vector2,
+  velocity: THREE.Vector2,
+  delta: number,
+  colliders: THREE.Box3[],
+): void {
+  const desired = direction.clone().multiplyScalar(MOVEMENT.maxSpeed);
+  const rate = desired.lengthSq() > 0 ? MOVEMENT.acceleration : MOVEMENT.deceleration;
+  const blend = Math.min(rate * delta, 1);
+  velocity.lerp(desired, blend);
+  moveWithCollisions(player, velocity, delta, colliders);
+  if (velocity.lengthSq() > 0.01) {
+    const targetRotation = Math.atan2(velocity.x, velocity.y);
+    player.rotation.y = THREE.MathUtils.damp(player.rotation.y, targetRotation, MOVEMENT.turnSharpness, delta);
   }
-  if (direction.lengthSq() > 0) player.rotation.y = Math.atan2(direction.x, direction.y);
+}
+
+function moveWithCollisions(player: THREE.Group, velocity: THREE.Vector2, delta: number, colliders: THREE.Box3[]): void {
+  const next = player.position.clone();
+  next.x += velocity.x * delta;
+  next.x = THREE.MathUtils.clamp(next.x, -ROOM_WIDTH / 2 + PLAYER_RADIUS, ROOM_WIDTH / 2 - PLAYER_RADIUS);
+  if (!isBlocked(next.x, next.z, colliders)) player.position.x = next.x;
+  next.z -= velocity.y * delta;
+  next.z = THREE.MathUtils.clamp(next.z, -ROOM_DEPTH / 2 + PLAYER_RADIUS, ROOM_DEPTH / 2 - PLAYER_RADIUS);
+  if (!isBlocked(player.position.x, next.z, colliders)) player.position.z = next.z;
+}
+
+function isBlocked(x: number, z: number, colliders: THREE.Box3[]): boolean {
+  const candidate = new THREE.Box3(
+    new THREE.Vector3(x - PLAYER_RADIUS, 0, z - PLAYER_RADIUS),
+    new THREE.Vector3(x + PLAYER_RADIUS, 2.4, z + PLAYER_RADIUS),
+  );
+  return colliders.some((collider) => collider.intersectsBox(candidate));
 }
