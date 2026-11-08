@@ -174,20 +174,36 @@ export class GameRoom implements DurableObject {
       }
       const validIngredients = clientMessage.ingredients.filter((id) => INGREDIENTS.some((item) => item.id === id));
       if (!validIngredients.length) return;
-      const result = scoreDrink(validIngredients, [...this.customers.values()][0]);
       const drink: DrinkState = {
         id: crypto.randomUUID(),
         inventor: player.name,
         name: cleanText(clientMessage.name, 32),
         note: cleanText(clientMessage.note, 120),
         ingredients: validIngredients,
-        score: result.score,
-        coins: result.coins,
+        score: 0,
+        coins: 0,
       };
       this.drinks.push(drink);
+      await this.state.storage.put("drinks", this.drinks);
+      this.broadcast({ type: "progress", coins: this.coins, drinks: this.drinks });
+      return;
+    }
+    if (clientMessage.type === "serve") {
+      if (!player.canBrew) {
+        this.send(socket, { type: "error", message: "Bạn chưa được phân công phục vụ món này." });
+        return;
+      }
+      const drink = this.drinks.find((item) => item.id === clientMessage.drinkId);
+      const customer = this.customers.get(clientMessage.customerId);
+      if (!drink || !customer || drink.score > 0) return;
+      const result = scoreDrink(drink.ingredients, customer);
+      drink.score = result.score;
+      drink.coins = result.coins;
       this.coins += result.coins;
+      this.customers.delete(customer.id);
       await this.state.storage.put("coins", this.coins);
       await this.state.storage.put("drinks", this.drinks);
+      this.broadcast({ type: "customer_left", customerId: customer.id });
       this.broadcast({ type: "progress", coins: this.coins, drinks: this.drinks });
       return;
     }

@@ -58,6 +58,7 @@ export type ClientMessage =
   | { type: "emote"; emote: "wave" | "jump" | "cheers" }
   | { type: "set_brewer"; playerId: string; canBrew: boolean }
   | { type: "brew"; name: string; note: string; ingredients: string[] }
+  | { type: "serve"; drinkId: string; customerId: string }
   | { type: "ping" };
 
 export type ServerMessage =
@@ -121,6 +122,9 @@ export function isClientMessage(value: unknown): value is ClientMessage {
       typeof message.note === "string" && message.note.length <= 120 &&
       Array.isArray(message.ingredients) && message.ingredients.length >= 1 && message.ingredients.length <= 8 &&
       message.ingredients.every((item) => typeof item === "string" && item.length <= 32);
+  }
+  if (message.type === "serve") {
+    return typeof message.drinkId === "string" && typeof message.customerId === "string";
   }
   return message.type === "emote" && ["wave", "jump", "cheers"].includes(String(message.emote));
 }

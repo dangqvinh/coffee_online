@@ -16,6 +16,7 @@ const brewForm = document.querySelector<HTMLFormElement>("#brew-form");
 const adminPanel = document.querySelector<HTMLElement>("#admin-panel");
 const brewerPlayer = document.querySelector<HTMLSelectElement>("#brewer-player");
 const toggleBrewer = document.querySelector<HTMLButtonElement>("#toggle-brewer");
+const serveButton = document.querySelector<HTMLButtonElement>("#serve-button");
 let socket: WebSocket | undefined;
 let stopGame: (() => void) | undefined;
 let remoteApi: {
@@ -34,6 +35,8 @@ let startPosition = { x: 0, z: 3.8 };
 let lastPositionSent = 0;
 let lastSentPosition = "";
 let knownPlayers: PlayerState[] = [];
+let knownCustomers: CustomerState[] = [];
+let latestDrinkId = "";
 
 form?.addEventListener("submit", (event) => {
   event.preventDefault();
@@ -92,6 +95,7 @@ form?.addEventListener("submit", (event) => {
     if (message.type === "welcome") {
       currentPlayerId = message.playerId;
       knownPlayers = message.players;
+      knownCustomers = message.customers;
       setupIngredients(message.ingredients);
       setupAdmin(message.players);
       const localPlayer = message.players.find((player) => player.id === currentPlayerId);
@@ -118,9 +122,26 @@ form?.addEventListener("submit", (event) => {
     if (message.type === "chat") remoteApi?.showRemoteChat(message.playerId, message.text);
     if (message.type === "emote") remoteApi?.playRemoteEmote(message.playerId, message.emote);
     if (message.type === "customer_joined") customerApi?.addCustomer(message.customer);
-    if (message.type === "customer_update") customerApi?.updateCustomer(message.customer);
-    if (message.type === "customer_left") customerApi?.removeCustomer(message.customerId);
+    if (message.type === "customer_joined") knownCustomers = [...knownCustomers, message.customer];
+    if (message.type === "customer_update") {
+      knownCustomers = knownCustomers.map((customer) => customer.id === message.customer.id ? message.customer : customer);
+      customerApi?.updateCustomer(message.customer);
+    }
+    if (message.type === "customer_left") {
+      knownCustomers = knownCustomers.filter((customer) => customer.id !== message.customerId);
+      customerApi?.removeCustomer(message.customerId);
+    }
+    if (message.type === "progress") {
+      latestDrinkId = message.drinks.at(-1)?.id ?? latestDrinkId;
+    }
     if (message.type === "error") status!.textContent = message.message;
+  });
+
+  serveButton?.addEventListener("click", () => {
+    const customer = knownCustomers[0];
+    if (latestDrinkId && customer) {
+      socket?.send(JSON.stringify({ type: "serve", drinkId: latestDrinkId, customerId: customer.id }));
+    }
   });
 
   brewForm?.addEventListener("submit", (event) => {
