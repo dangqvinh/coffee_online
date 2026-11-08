@@ -75,13 +75,6 @@ export class GameRoom implements DurableObject {
       vx: 0,
       vz: 0,
     });
-    this.send(server, {
-      type: "welcome",
-      playerId,
-      roomCode: this.roomCode,
-      people: this.sockets.size,
-      players: [...this.sockets.values()],
-    });
     this.broadcast({ type: "room_count", people: this.sockets.size }, server);
     return new Response(null, { status: 101, webSocket: client });
   }
