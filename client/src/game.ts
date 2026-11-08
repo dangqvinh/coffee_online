@@ -28,6 +28,17 @@ const PALETTE = {
   blush: "#e98f7d",
   shadow: "#6d493a",
   marker: "#f7d36b",
+  wall: "#6eaa9b",
+  wallDark: "#477c76",
+  tile: "#e9c98e",
+  tileAccent: "#c76654",
+  wood: "#8f563e",
+  woodLight: "#c47c4c",
+  stoolRed: "#c76654",
+  stoolBlue: "#5f7fa8",
+  stoolGreen: "#769b68",
+  plant: "#5d8b63",
+  lamp: "#f7d36b",
 } as const;
 
 type CharacterConfig = {
@@ -84,11 +95,14 @@ export function startCafeGame(container: HTMLElement, playerName: string, callba
   const renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.05;
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   container.append(renderer.domElement);
 
-  scene.add(new THREE.HemisphereLight("#fff4d6", "#9d684e", 2.2));
+  scene.add(new THREE.HemisphereLight("#fff4d6", PALETTE.wallDark, 2.2));
   const sun = new THREE.DirectionalLight("#fff5d6", 2.8);
   sun.position.set(-6, 12, 5);
   sun.castShadow = true;
@@ -240,20 +254,31 @@ export function startCafeGame(container: HTMLElement, playerName: string, callba
 }
 
 function addCafe(scene: THREE.Scene, colliders: THREE.Box3[]): void {
-  const floor = mesh(new THREE.BoxGeometry(ROOM_WIDTH, 0.2, ROOM_DEPTH), "#d8a56a");
+  const floor = new THREE.Mesh(
+    new THREE.BoxGeometry(ROOM_WIDTH, 0.2, ROOM_DEPTH),
+    new THREE.MeshStandardMaterial({ map: makeTileTexture(), roughness: 0.9 }),
+  );
   floor.position.y = -0.1;
   scene.add(floor);
-  addWall(scene, colliders, 0, 1.5, -ROOM_DEPTH / 2, ROOM_WIDTH, 3, 0.3);
-  addWall(scene, colliders, -ROOM_WIDTH / 2, 1.5, 0, 0.3, 3, ROOM_DEPTH);
-  addWall(scene, colliders, ROOM_WIDTH / 2, 1.5, 0, 0.3, 3, ROOM_DEPTH);
-  addWall(scene, colliders, 0, 1.5, ROOM_DEPTH / 2, ROOM_WIDTH, 3, 0.3);
+  addWall(scene, colliders, 0, 1.5, -ROOM_DEPTH / 2, ROOM_WIDTH, 3, 0.3, PALETTE.wall);
+  addWall(scene, colliders, -ROOM_WIDTH / 2, 1.5, 0, 0.3, 3, ROOM_DEPTH, PALETTE.wall);
+  addWall(scene, colliders, ROOM_WIDTH / 2, 1.5, 0, 0.3, 3, ROOM_DEPTH, PALETTE.wall);
+  addWall(scene, colliders, 0, 1.5, ROOM_DEPTH / 2, ROOM_WIDTH, 3, 0.3, PALETTE.wall);
+  addBlock(scene, colliders, 0, 0.42, -ROOM_DEPTH / 2 + 0.18, ROOM_WIDTH, 0.7, 0.18, PALETTE.wallDark);
+  addFacade(scene);
+  addStreetSet(scene);
+  addPlants(scene);
+  addStringLights(scene);
+  addMenuBoard(scene);
+  addClock(scene);
+  addCat(scene);
 
   addFurniture(scene, colliders);
   const fan = new THREE.Group();
   fan.position.set(0, 4.5, 0);
-  fan.add(mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.5, 8), "#59443b"));
+  fan.add(mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.5, 8), PALETTE.hair));
   for (let index = 0; index < 4; index += 1) {
-    const blade = mesh(new THREE.BoxGeometry(0.16, 0.04, 1.6), "#fff0c7");
+    const blade = mesh(new THREE.BoxGeometry(0.16, 0.04, 1.6), PALETTE.tile);
     blade.rotation.y = (index * Math.PI) / 2;
     blade.position.z = 0.75;
     fan.add(blade);
@@ -261,11 +286,189 @@ function addCafe(scene: THREE.Scene, colliders: THREE.Box3[]): void {
   scene.add(fan);
 }
 
+function makeTileTexture(): THREE.CanvasTexture {
+  const canvas = document.createElement("canvas");
+  canvas.width = 128;
+  canvas.height = 128;
+  const context = canvas.getContext("2d");
+  if (!context) return new THREE.CanvasTexture(canvas);
+  context.fillStyle = PALETTE.tile;
+  context.fillRect(0, 0, 128, 128);
+  context.strokeStyle = PALETTE.tileAccent;
+  context.lineWidth = 5;
+  context.strokeRect(4, 4, 120, 120);
+  context.beginPath();
+  context.moveTo(64, 8);
+  context.lineTo(120, 64);
+  context.lineTo(64, 120);
+  context.lineTo(8, 64);
+  context.closePath();
+  context.stroke();
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.wrapT = THREE.RepeatWrapping;
+  texture.repeat.set(7, 5);
+  return texture;
+}
+
+function addFacade(scene: THREE.Scene): void {
+  const sign = new THREE.Mesh(
+    new THREE.BoxGeometry(6.6, 1.15, 0.18),
+    new THREE.MeshStandardMaterial({ map: makeSignTexture("QUÁN CÀ PHÊ NHÀ MÌNH"), emissive: PALETTE.lamp, emissiveIntensity: 0.18 }),
+  );
+  sign.position.set(0, 3.25, -5.72);
+  sign.castShadow = true;
+  scene.add(sign);
+  const awning = mesh(new THREE.BoxGeometry(8, 0.22, 1.15), PALETTE.tileAccent);
+  awning.position.set(0, 2.45, -5.35);
+  awning.rotation.x = -0.18;
+  scene.add(awning);
+  const trim = mesh(new THREE.BoxGeometry(8.2, 0.12, 0.12), PALETTE.lamp);
+  trim.position.set(0, 2.45, -5.88);
+  scene.add(trim);
+}
+
+function makeSignTexture(text: string): THREE.CanvasTexture {
+  const canvas = document.createElement("canvas");
+  canvas.width = 768;
+  canvas.height = 128;
+  const context = canvas.getContext("2d");
+  if (context) {
+    context.fillStyle = PALETTE.wood;
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.fillStyle = PALETTE.lamp;
+    context.font = "bold 42px system-ui";
+    context.textAlign = "center";
+    context.textBaseline = "middle";
+    context.fillText(text, canvas.width / 2, canvas.height / 2);
+  }
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
+
+function addStreetSet(scene: THREE.Scene): void {
+  const street = mesh(new THREE.BoxGeometry(ROOM_WIDTH + 8, 0.12, 2.5), PALETTE.wallDark);
+  street.position.set(0, -0.16, -7.1);
+  scene.add(street);
+  addScooter(scene, -6.4, -7.1, PALETTE.stoolRed);
+  addScooter(scene, 6.3, -7.1, PALETTE.stoolBlue);
+  const pole = new THREE.Group();
+  pole.position.set(7.5, 1.8, -6.45);
+  pole.add(mesh(new THREE.CylinderGeometry(0.08, 0.1, 3.6, 8), PALETTE.hair));
+  const lamp = mesh(new THREE.SphereGeometry(0.24, 8, 6), PALETTE.lamp);
+  lamp.position.y = 1.7;
+  const lampMaterial = lamp.material as THREE.MeshStandardMaterial;
+  lampMaterial.emissive = new THREE.Color(PALETTE.lamp);
+  lampMaterial.emissiveIntensity = 0.8;
+  pole.add(lamp);
+  scene.add(pole);
+}
+
+function addScooter(scene: THREE.Scene, x: number, z: number, color: string): void {
+  const scooter = new THREE.Group();
+  scooter.position.set(x, 0.25, z);
+  const wheelGeometry = new THREE.CylinderGeometry(0.28, 0.28, 0.12, 12);
+  const wheelMaterial = new THREE.MeshStandardMaterial({ color: PALETTE.hair });
+  for (const wheelX of [-0.55, 0.55]) {
+    const wheel = new THREE.Mesh(wheelGeometry, wheelMaterial);
+    wheel.rotation.z = Math.PI / 2;
+    wheel.position.x = wheelX;
+    scooter.add(wheel);
+  }
+  const body = mesh(new THREE.BoxGeometry(1.15, 0.32, 0.45), color);
+  body.position.y = 0.35;
+  scooter.add(body);
+  const handle = mesh(new THREE.BoxGeometry(0.08, 0.7, 0.08), PALETTE.hair);
+  handle.position.set(0.55, 0.7, 0);
+  handle.rotation.z = -0.25;
+  scooter.add(handle);
+  scene.add(scooter);
+}
+
+function addPlants(scene: THREE.Scene): void {
+  const potGeometry = new THREE.CylinderGeometry(0.28, 0.22, 0.4, 8);
+  const potMaterial = new THREE.MeshStandardMaterial({ color: PALETTE.woodLight });
+  const leafGeometry = new THREE.SphereGeometry(0.3, 7, 5);
+  const leafMaterial = new THREE.MeshStandardMaterial({ color: PALETTE.plant });
+  const plants = new THREE.InstancedMesh(leafGeometry, leafMaterial, 6);
+  const transform = new THREE.Object3D();
+  for (let index = 0; index < 6; index += 1) {
+    transform.position.set(-7.3 + index * 0.65, 2.8 + (index % 2) * 0.18, -5.72);
+    transform.scale.setScalar(0.75 + (index % 3) * 0.12);
+    transform.updateMatrix();
+    plants.setMatrixAt(index, transform.matrix);
+  }
+  plants.instanceMatrix.needsUpdate = true;
+  scene.add(plants);
+  for (const x of [-7.3, 7.3]) {
+    const pot = new THREE.Mesh(potGeometry, potMaterial);
+    pot.position.set(x, 0.2, -4.9);
+    scene.add(pot);
+  }
+}
+
+function addStringLights(scene: THREE.Scene): void {
+  const bulbGeometry = new THREE.SphereGeometry(0.1, 8, 6);
+  const bulbMaterial = new THREE.MeshStandardMaterial({
+    color: PALETTE.lamp,
+    emissive: PALETTE.lamp,
+    emissiveIntensity: 0.6,
+  });
+  const bulbs = new THREE.InstancedMesh(bulbGeometry, bulbMaterial, 10);
+  const transform = new THREE.Object3D();
+  for (let index = 0; index < 10; index += 1) {
+    transform.position.set(-7.5 + index * 1.65, 2.8 + Math.sin(index) * 0.12, -5.52);
+    transform.updateMatrix();
+    bulbs.setMatrixAt(index, transform.matrix);
+  }
+  bulbs.instanceMatrix.needsUpdate = true;
+  scene.add(bulbs);
+}
+
+function addMenuBoard(scene: THREE.Scene): void {
+  const board = new THREE.Mesh(
+    new THREE.BoxGeometry(1.3, 1.5, 0.08),
+    new THREE.MeshStandardMaterial({ map: makeSignTexture("HÔM NAY\nCÀ PHÊ"), roughness: 0.9 }),
+  );
+  board.position.set(4.2, 2, -5.72);
+  board.rotation.y = Math.PI;
+  scene.add(board);
+}
+
+function addClock(scene: THREE.Scene): void {
+  const clock = mesh(new THREE.CylinderGeometry(0.42, 0.42, 0.08, 16), PALETTE.tile);
+  clock.position.set(-3.2, 2.35, -5.72);
+  clock.rotation.x = Math.PI / 2;
+  scene.add(clock);
+  const hand = mesh(new THREE.BoxGeometry(0.04, 0.35, 0.03), PALETTE.hair);
+  hand.position.set(-3.2, 2.45, -5.8);
+  scene.add(hand);
+}
+
+function addCat(scene: THREE.Scene): void {
+  const cat = new THREE.Group();
+  cat.position.set(6.6, 0.28, -3.1);
+  const body = mesh(new THREE.SphereGeometry(0.38, 10, 7), PALETTE.hair);
+  body.scale.set(1.35, 0.55, 0.8);
+  cat.add(body);
+  const head = mesh(new THREE.SphereGeometry(0.24, 10, 7), PALETTE.hair);
+  head.position.set(0.42, 0.06, 0);
+  cat.add(head);
+  for (const side of [-1, 1]) {
+    const ear = mesh(new THREE.ConeGeometry(0.09, 0.18, 4), PALETTE.hair);
+    ear.position.set(0.43, 0.28, side * 0.13);
+    cat.add(ear);
+  }
+  scene.add(cat);
+}
+
 function addFurniture(scene: THREE.Scene, colliders: THREE.Box3[]): void {
-  addBlock(scene, colliders, -5.8, 1, -3.8, 5, 1.8, 1.3, "#9a593d");
-  addBlock(scene, colliders, -5.8, 2, -3.8, 4.4, 0.4, 1.1, "#e1a15e");
-  addBlock(scene, colliders, 5.3, 1, -3.9, 1.2, 2, 1.2, "#7b5140");
-  addBlock(scene, colliders, 5.3, 2.1, -3.9, 1.4, 0.25, 1.4, "#e8b56e");
+  addBlock(scene, colliders, -5.8, 1, -3.8, 5, 1.8, 1.3, PALETTE.wood);
+  addBlock(scene, colliders, -5.8, 2, -3.8, 4.4, 0.4, 1.1, PALETTE.woodLight);
+  addBlock(scene, colliders, 5.3, 1, -3.9, 1.2, 2, 1.2, PALETTE.wood);
+  addBlock(scene, colliders, 5.3, 2.1, -3.9, 1.4, 0.25, 1.4, PALETTE.apron);
   for (const [x, z] of [[-2.5, 2.3], [2, 2.2], [-2.5, -0.9], [2, -0.8]]) {
     addTable(scene, colliders, x, z);
   }
@@ -280,7 +483,7 @@ function addTable(scene: THREE.Scene, colliders: THREE.Box3[], x: number, z: num
   scene.add(table);
   addBlock(scene, colliders, x, 0.45, z, 0.25, 0.9, 0.25, "#85513c");
   for (const [dx, dz] of [[1.35, 0], [-1.35, 0]]) {
-    const chair = mesh(new THREE.BoxGeometry(0.7, 0.65, 0.7), "#6f9b86");
+    const chair = mesh(new THREE.BoxGeometry(0.7, 0.65, 0.7), [PALETTE.stoolRed, PALETTE.stoolBlue, PALETTE.stoolGreen][Math.abs(Math.round(x + z)) % 3]);
     chair.position.set(x + dx, 0.35, z + dz);
     chair.castShadow = true;
     scene.add(chair);
@@ -288,8 +491,8 @@ function addTable(scene: THREE.Scene, colliders: THREE.Box3[], x: number, z: num
   colliders.push(new THREE.Box3(new THREE.Vector3(x - 1.1, 0, z - 1.1), new THREE.Vector3(x + 1.1, 1.3, z + 1.1)));
 }
 
-function addWall(scene: THREE.Scene, colliders: THREE.Box3[], x: number, y: number, z: number, width: number, height: number, depth: number): void {
-  addBlock(scene, colliders, x, y, z, width, height, depth, "#f4d6a2");
+function addWall(scene: THREE.Scene, colliders: THREE.Box3[], x: number, y: number, z: number, width: number, height: number, depth: number, color: string): void {
+  addBlock(scene, colliders, x, y, z, width, height, depth, color);
 }
 
 function addBlock(scene: THREE.Scene, colliders: THREE.Box3[], x: number, y: number, z: number, width: number, height: number, depth: number, color: string): void {
