@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Quán Cà Phê Nhà Mình</title>
+  </head>
+  <body>
+    <main>
+      <p class="eyebrow">M1 · Kết nối phòng</p>
+      <h1>Quán Cà Phê Nhà Mình</h1>
+      <p>Chào mừng bạn đến căn quán nhỏ của chúng ta.</p>
+      <form id="join-form">
+        <label>
+          Tên của bạn
+          <input id="name" maxlength="16" value="Bạn cà phê" required />
+        </label>
+        <label>
+          Mã phòng
+          <input id="room" maxlength="24" pattern="[a-z0-9-]+" value="phong-nho" required />
+        </label>
+        <button type="submit">Vào quán</button>
+      </form>
+      <p id="status" role="status">Chưa kết nối</p>
+      <p id="count">Trong phòng: 0 người</p>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

@@ -1,0 +1,26 @@
+{
+  "name": "coffee-online",
+  "private": true,
+  "workspaces": [
+    "client",
+    "shared",
+    "worker"
+  ],
+  "scripts": {
+    "dev": "concurrently -k -n client,worker -c cyan,yellow \"npm:dev:client\" \"npm:dev:worker\"",
+    "dev:client": "vite --config client/vite.config.ts",
+    "dev:worker": "wrangler dev --config worker/wrangler.toml",
+    "build": "npm run build:client",
+    "build:client": "vite build --config client/vite.config.ts",
+    "deploy:pages": "npm run build:client && wrangler pages deploy client/dist --project-name coffee-online --branch main",
+    "deploy:worker": "wrangler deploy --config worker/wrangler.toml"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261104.1",
+    "@types/node": "^22.10.1",
+    "concurrently": "^9.1.0",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.3",
+    "wrangler": "^4.158.0"
+  }
+}

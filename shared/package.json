@@ -1,0 +1,8 @@
+{
+  "name": "@quan-ca-phe/shared",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "main": "./src/protocol.ts",
+  "types": "./src/protocol.ts"
+}
