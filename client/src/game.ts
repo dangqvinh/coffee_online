@@ -101,6 +101,9 @@ export function startCafeGame(container: HTMLElement, playerName: string, callba
   const keys = new Set<string>();
   const input = new THREE.Vector2();
   const velocity = new THREE.Vector2();
+  const previousPlayerPosition = player.position.clone();
+  const visualPlayerPosition = player.position.clone();
+  const cameraLookTarget = new THREE.Vector3();
   let joystickPointer: number | undefined;
   let animationFrame = 0;
   let previousTime = performance.now();
@@ -193,15 +196,25 @@ export function startCafeGame(container: HTMLElement, playerName: string, callba
     movement.add(input);
     if (movement.lengthSq() > 1) movement.normalize();
     while (accumulator >= MOVEMENT.fixedStep) {
+      previousPlayerPosition.copy(player.position);
       updateMovement(player, movement, velocity, MOVEMENT.fixedStep, colliders);
       accumulator -= MOVEMENT.fixedStep;
     }
+    const renderAlpha = accumulator / MOVEMENT.fixedStep;
+    visualPlayerPosition.lerpVectors(previousPlayerPosition, player.position, renderAlpha);
     const cameraAlpha = 1 - Math.exp(-MOVEMENT.cameraSharpness * delta);
     const lookAheadX = velocity.x * 0.18;
     const lookAheadZ = -velocity.y * 0.18;
-    camera.position.x = THREE.MathUtils.lerp(camera.position.x, player.position.x + 12 + lookAheadX, cameraAlpha);
-    camera.position.z = THREE.MathUtils.lerp(camera.position.z, player.position.z + 14 + lookAheadZ, cameraAlpha);
-    camera.lookAt(player.position.x + lookAheadX, 0, player.position.z + lookAheadZ);
+    const targetCameraX = visualPlayerPosition.x + 12 + lookAheadX;
+    const targetCameraZ = visualPlayerPosition.z + 14 + lookAheadZ;
+    camera.position.x = THREE.MathUtils.lerp(camera.position.x, targetCameraX, cameraAlpha);
+    camera.position.z = THREE.MathUtils.lerp(camera.position.z, targetCameraZ, cameraAlpha);
+    cameraLookTarget.set(
+      visualPlayerPosition.x + lookAheadX,
+      0,
+      visualPlayerPosition.z + lookAheadZ,
+    );
+    camera.lookAt(cameraLookTarget);
     animatePlayer(player, velocity.length() / MOVEMENT.maxSpeed, time / 1000);
     renderer.render(scene, camera);
     animationFrame = requestAnimationFrame(tick);
