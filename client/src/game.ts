@@ -3,6 +3,7 @@ import type { CharacterConfig, PlayerState } from "@quan-ca-phe/shared";
 
 type GameCallbacks = {
   onExit: () => void;
+  startPosition?: { x: number; z: number };
   onPosition?: (x: number, z: number, vx: number, vz: number) => void;
   onChat?: (text: string) => void;
   onEmote?: (emote: "wave" | "jump" | "cheers") => void;
@@ -114,7 +115,7 @@ export function startCafeGame(container: HTMLElement, playerName: string, callba
 
   const colliders: THREE.Box3[] = [];
   addCafe(scene, colliders);
-  const player = addPlayer(scene, playerName);
+  const player = addPlayer(scene, playerName, undefined, callbacks.startPosition);
   const keys = new Set<string>();
   const input = new THREE.Vector2();
   const velocity = new THREE.Vector2();
@@ -567,7 +568,7 @@ function addPlayer(scene: THREE.Scene, name: string, config: CharacterConfig = {
   shirt: "teal",
   hat: "conical",
   apron: true,
-}): CharacterRig {
+}, startPosition = { x: 0, z: 3.8 }): CharacterRig {
   const player = new THREE.Group() as CharacterRig;
   const body = new THREE.Group();
   body.position.y = 0.92;
@@ -645,7 +646,7 @@ function addPlayer(scene: THREE.Scene, name: string, config: CharacterConfig = {
     blinkTime: 0,
     velocity: new THREE.Vector2(),
   };
-  player.position.set(0, 0, 3.8);
+  player.position.set(startPosition.x, 0, startPosition.z);
   scene.add(player);
   return player;
 }

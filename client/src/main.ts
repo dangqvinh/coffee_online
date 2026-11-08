@@ -19,6 +19,7 @@ let remoteApi: {
   playRemoteEmote: (playerId: string, emote: "wave" | "jump" | "cheers") => void;
 } | undefined;
 let currentPlayerId = "";
+let startPosition = { x: 0, z: 3.8 };
 let lastPositionSent = 0;
 let lastSentPosition = "";
 
@@ -34,16 +35,14 @@ form?.addEventListener("submit", (event) => {
   workerUrl.protocol = workerUrl.protocol === "https:" ? "wss:" : "ws:";
   socket = new WebSocket(workerUrl);
   status!.textContent = "Đang kết nối…";
-  socket.addEventListener("open", () => {
-    status!.textContent = "Đã vào quán";
-    socket?.send(JSON.stringify({
-      type: "join",
-      name,
-      config: { skin: "honey", shirt: "teal", hat: "conical", apron: true },
-    }));
+  let gameStarted = false;
+  const launchGame = () => {
+    if (gameStarted) return;
+    gameStarted = true;
     lobby?.classList.add("hidden");
     game?.classList.add("active");
     stopGame = startCafeGame(game!, name, {
+      startPosition,
       onExit: () => {
         game?.classList.remove("active");
         lobby?.classList.remove("hidden");
@@ -60,6 +59,14 @@ form?.addEventListener("submit", (event) => {
         remoteApi = api;
       },
     });
+  };
+  socket.addEventListener("open", () => {
+    status!.textContent = "Đã vào quán";
+    socket?.send(JSON.stringify({
+      type: "join",
+      name,
+      config: { skin: "honey", shirt: "teal", hat: "conical", apron: true },
+    }));
   });
   socket.addEventListener("message", (event) => {
     const message = JSON.parse(event.data) as ServerMessage;
@@ -68,6 +75,11 @@ form?.addEventListener("submit", (event) => {
     }
     if (message.type === "welcome") {
       currentPlayerId = message.playerId;
+      const localPlayer = message.players.find((player) => player.id === currentPlayerId);
+      if (localPlayer) {
+        startPosition = { x: localPlayer.x, z: localPlayer.z };
+      }
+      launchGame();
       for (const player of message.players) {
         if (player.id !== currentPlayerId) remoteApi?.addRemotePlayer(player);
       }

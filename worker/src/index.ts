@@ -64,13 +64,14 @@ export class GameRoom implements DurableObject {
     const pair = new WebSocketPair();
     const [client, server] = Object.values(pair) as [WebSocket, WebSocket];
     const playerId = crypto.randomUUID();
+    const spawn = spawnPosition(this.sockets.size);
     this.state.acceptWebSocket(server);
     this.sockets.set(server, {
       id: playerId,
       name: "Khách mới",
       config: { skin: "honey", shirt: "teal", hat: "conical", apron: true },
-      x: 0,
-      z: 3.8,
+      x: spawn.x,
+      z: spawn.z,
       vx: 0,
       vz: 0,
     });
@@ -168,6 +169,18 @@ export class GameRoom implements DurableObject {
     }
   }
 
+}
+
+function spawnPosition(playerIndex: number): { x: number; z: number } {
+  const positions = [
+    { x: 0, z: 3.8 },
+    { x: 2.2, z: 3.8 },
+    { x: -2.2, z: 3.8 },
+    { x: 0, z: 1.1 },
+    { x: 2.2, z: 1.1 },
+    { x: -2.2, z: 1.1 },
+  ];
+  return positions[playerIndex] ?? positions[0];
 }
 
 function clamp(value: number, minimum: number, maximum: number): number {
