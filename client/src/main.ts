@@ -1,4 +1,4 @@
-import type { PlayerState, ServerMessage } from "@quan-ca-phe/shared";
+import type { CustomerState, PlayerState, ServerMessage } from "@quan-ca-phe/shared";
 import { startCafeGame } from "./game";
 import "./style.css";
 
@@ -17,6 +17,11 @@ let remoteApi: {
   removeRemotePlayer: (playerId: string) => void;
   showRemoteChat: (playerId: string, text: string) => void;
   playRemoteEmote: (playerId: string, emote: "wave" | "jump" | "cheers") => void;
+} | undefined;
+let customerApi: {
+  addCustomer: (customer: CustomerState) => void;
+  updateCustomer: (customer: CustomerState) => void;
+  removeCustomer: (customerId: string) => void;
 } | undefined;
 let currentPlayerId = "";
 let startPosition = { x: 0, z: 3.8 };
@@ -58,6 +63,9 @@ form?.addEventListener("submit", (event) => {
       onRemoteReady: (api) => {
         remoteApi = api;
       },
+      onCustomerReady: (api) => {
+        customerApi = api;
+      },
     });
   };
   socket.addEventListener("open", () => {
@@ -83,6 +91,7 @@ form?.addEventListener("submit", (event) => {
       for (const player of message.players) {
         if (player.id !== currentPlayerId) remoteApi?.addRemotePlayer(player);
       }
+      for (const customer of message.customers) customerApi?.addCustomer(customer);
     }
     if (message.type === "player_joined" && message.player.id !== currentPlayerId) {
       remoteApi?.addRemotePlayer(message.player);
@@ -91,6 +100,9 @@ form?.addEventListener("submit", (event) => {
     if (message.type === "player_left") remoteApi?.removeRemotePlayer(message.playerId);
     if (message.type === "chat") remoteApi?.showRemoteChat(message.playerId, message.text);
     if (message.type === "emote") remoteApi?.playRemoteEmote(message.playerId, message.emote);
+    if (message.type === "customer_joined") customerApi?.addCustomer(message.customer);
+    if (message.type === "customer_update") customerApi?.updateCustomer(message.customer);
+    if (message.type === "customer_left") customerApi?.removeCustomer(message.customerId);
     if (message.type === "error") status!.textContent = message.message;
   });
   socket.addEventListener("close", () => {

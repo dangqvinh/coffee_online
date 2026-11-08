@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import type { CharacterConfig, PlayerState } from "@quan-ca-phe/shared";
+import type { CharacterConfig, CustomerState, PlayerState } from "@quan-ca-phe/shared";
 
 type GameCallbacks = {
   onExit: () => void;
@@ -12,6 +12,11 @@ type GameCallbacks = {
     removeRemotePlayer: (playerId: string) => void;
     showRemoteChat: (playerId: string, text: string) => void;
     playRemoteEmote: (playerId: string, emote: "wave" | "jump" | "cheers") => void;
+  }) => void;
+  onCustomerReady?: (api: {
+    addCustomer: (customer: CustomerState) => void;
+    updateCustomer: (customer: CustomerState) => void;
+    removeCustomer: (customerId: string) => void;
   }) => void;
 };
 
@@ -120,6 +125,7 @@ export function startCafeGame(container: HTMLElement, playerName: string, callba
   const input = new THREE.Vector2();
   const velocity = new THREE.Vector2();
   const remotePlayers = new Map<string, { rig: CharacterRig; target: THREE.Vector3; last: THREE.Vector3; chat?: THREE.Sprite; chatUntil: number }>();
+  const customers = new Map<string, { group: THREE.Group; patience: THREE.Mesh }>();
   const previousPlayerPosition = player.position.clone();
   const visualPlayerPosition = player.position.clone();
   const cameraLookTarget = new THREE.Vector3();
@@ -250,6 +256,7 @@ export function startCafeGame(container: HTMLElement, playerName: string, callba
   };
   animationFrame = requestAnimationFrame(tick);
   callbacks.onRemoteReady?.({ addRemotePlayer, removeRemotePlayer, showRemoteChat, playRemoteEmote });
+  callbacks.onCustomerReady?.({ addCustomer, updateCustomer, removeCustomer });
 
   return () => {
     cancelAnimationFrame(animationFrame);
@@ -308,6 +315,50 @@ export function startCafeGame(container: HTMLElement, playerName: string, callba
     window.setTimeout(() => {
       remote.rig.position.y = 0;
     }, 260);
+  }
+
+  function addCustomer(customer: CustomerState): void {
+    const existing = customers.get(customer.id);
+    if (existing) {
+      updateCustomer(customer);
+      return;
+    }
+    const group = new THREE.Group();
+    const [x, z] = tablePosition(customer.table);
+    group.position.set(x, 0, z);
+    const body = mesh(new THREE.CapsuleGeometry(0.38, 0.55, 4, 8), PALETTE.stoolBlue);
+    body.position.y = 0.75;
+    group.add(body);
+    const head = mesh(new THREE.SphereGeometry(0.38, 10, 7), PALETTE.skin);
+    head.position.y = 1.55;
+    group.add(head);
+    const request = makeChatLabel(`${customer.name}: ${customer.request}`);
+    request.position.set(0, 2.45, 0);
+    request.scale.set(3.2, 0.8, 1);
+    group.add(request);
+    const patience = mesh(new THREE.BoxGeometry(1.2, 0.1, 0.04), "#6f9b86");
+    patience.position.set(0, 2.08, 0.02);
+    group.add(patience);
+    scene.add(group);
+    customers.set(customer.id, { group, patience });
+    updateCustomer(customer);
+  }
+
+  function updateCustomer(customer: CustomerState): void {
+    const item = customers.get(customer.id);
+    if (!item) {
+      addCustomer(customer);
+      return;
+    }
+    item.patience.scale.x = Math.max(0.01, customer.patience / customer.maxPatience);
+    item.patience.position.x = -0.6 + item.patience.scale.x * 0.6;
+  }
+
+  function removeCustomer(customerId: string): void {
+    const item = customers.get(customerId);
+    if (!item) return;
+    scene.remove(item.group);
+    customers.delete(customerId);
   }
 
 }
@@ -696,9 +747,15 @@ function makeChatLabel(text: string): THREE.Sprite {
     context.textAlign = "center";
     context.fillText(text.slice(0, 60), 192, 58);
   }
+
   const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(canvas), transparent: true }));
   sprite.scale.set(2.4, 0.6, 1);
   return sprite;
+}
+
+function tablePosition(table: number): [number, number] {
+  const positions: [number, number][] = [[-2.5, 2.3], [2, 2.2], [-2.5, -0.9], [2, -0.8]];
+  return positions[table % positions.length];
 }
 
 function animatePlayer(player: CharacterRig, inputMagnitude: number, seconds: number): void {

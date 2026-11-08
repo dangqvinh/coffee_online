@@ -21,6 +21,17 @@ export type PlayerState = {
   vz: number;
 };
 
+export type CustomerState = {
+  id: string;
+  name: string;
+  story: string;
+  request: string;
+  table: number;
+  patience: number;
+  maxPatience: number;
+  mood: "vui vẻ" | "trầm tư" | "tò mò";
+};
+
 export type ClientMessage =
   | { type: "join"; name: string; config: CharacterConfig }
   | { type: "position"; x: number; z: number; vx: number; vz: number }
@@ -29,13 +40,16 @@ export type ClientMessage =
   | { type: "ping" };
 
 export type ServerMessage =
-  | { type: "welcome"; playerId: string; roomCode: string; people: number; players: PlayerState[] }
+  | { type: "welcome"; playerId: string; roomCode: string; people: number; players: PlayerState[]; customers: CustomerState[] }
   | { type: "room_count"; people: number }
   | { type: "player_joined"; player: PlayerState }
   | { type: "player_update"; player: PlayerState }
   | { type: "player_left"; playerId: string }
   | { type: "chat"; playerId: string; text: string }
   | { type: "emote"; playerId: string; emote: "wave" | "jump" | "cheers" }
+  | { type: "customer_joined"; customer: CustomerState }
+  | { type: "customer_update"; customer: CustomerState }
+  | { type: "customer_left"; customerId: string }
   | { type: "error"; message: string }
   | { type: "pong" };
 

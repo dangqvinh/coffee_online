@@ -4,6 +4,7 @@ import {
   MAX_MESSAGE_BYTES,
   MAX_PLAYERS,
   type PlayerState,
+  type CustomerState,
   type ClientMessage,
   type ServerMessage,
 } from "@quan-ca-phe/shared";
@@ -44,6 +45,8 @@ export class GameRoom implements DurableObject {
   private readonly state: DurableObjectState;
   private readonly sockets = new Map<WebSocket, PlayerState>();
   private readonly lastMessageAt = new Map<WebSocket, number>();
+  private readonly customers = new Map<string, CustomerState>();
+  private nextCustomerAt = 0;
   private roomCode = "";
 
   constructor(state: DurableObjectState) {
@@ -111,8 +114,9 @@ export class GameRoom implements DurableObject {
     if (clientMessage.type === "join") {
       player.name = clientMessage.name.replace(/[\u0000-\u001f\u007f]/g, "").trim().slice(0, 16);
       player.config = clientMessage.config;
-      this.send(socket, { type: "welcome", playerId: player.id, roomCode: this.roomCode, people: this.sockets.size, players: [...this.sockets.values()] });
+      this.send(socket, { type: "welcome", playerId: player.id, roomCode: this.roomCode, people: this.sockets.size, players: [...this.sockets.values()], customers: [...this.customers.values()] });
       this.broadcast({ type: "player_joined", player }, socket);
+      this.ensureCustomerAlarm();
       return;
     }
     if (clientMessage.type === "position") {
@@ -148,6 +152,26 @@ export class GameRoom implements DurableObject {
     this.webSocketClose(socket);
   }
 
+  async alarm(): Promise<void> {
+    const now = Date.now();
+    for (const customer of [...this.customers.values()]) {
+      customer.patience = Math.max(0, customer.patience - 5);
+      if (customer.patience === 0) {
+        this.customers.delete(customer.id);
+        this.broadcast({ type: "customer_left", customerId: customer.id });
+      } else {
+        this.broadcast({ type: "customer_update", customer });
+      }
+    }
+    if (this.sockets.size > 0 && this.customers.size < 4 && now >= this.nextCustomerAt) {
+      const customer = createCustomer(this.customers, now);
+      this.customers.set(customer.id, customer);
+      this.broadcast({ type: "customer_joined", customer });
+      this.nextCustomerAt = now + 12000;
+    }
+    if (this.sockets.size > 0) await this.state.storage.setAlarm(now + 1000);
+  }
+
   private send(socket: WebSocket, message: ServerMessage): void {
     try {
       socket.send(JSON.stringify(message));
@@ -159,6 +183,13 @@ export class GameRoom implements DurableObject {
   private broadcast(message: ServerMessage, except?: WebSocket): void {
     for (const socket of this.sockets.keys()) {
       if (socket !== except) this.send(socket, message);
+    }
+  }
+
+  private ensureCustomerAlarm(): void {
+    if (this.nextCustomerAt === 0) {
+      this.nextCustomerAt = Date.now() + 3000;
+      void this.state.storage.setAlarm(this.nextCustomerAt);
     }
   }
 
@@ -182,4 +213,20 @@ function clamp(value: number, minimum: number, maximum: number): number {
 
 function cleanText(value: string, maximumLength: number): string {
   return value.replace(/[\u0000-\u001f\u007f]/g, "").trim().slice(0, maximumLength);
+}
+
+function createCustomer(customers: Map<string, CustomerState>, now: number): CustomerState {
+  const templates = [
+    { name: "Chị Mai", story: "Vừa tan ca, chị muốn tìm chút bình yên.", request: "Một ly ngọt nhẹ, thơm và mát.", mood: "trầm tư" as const },
+    { name: "Bạn Nam", story: "Nam đang tìm cảm hứng cho bài hát mới.", request: "Một ly cà phê đậm, có vị lạ.", mood: "tò mò" as const },
+    { name: "Cô Hạnh", story: "Cô Hạnh ghé quán sau buổi đi chợ.", request: "Một thức uống béo, thơm, không quá lạnh.", mood: "vui vẻ" as const },
+  ];
+  const template = templates[customers.size % templates.length];
+  return {
+    id: `customer-${now}-${customers.size}`,
+    ...template,
+    table: customers.size % 4,
+    patience: 100,
+    maxPatience: 100,
+  };
 }
