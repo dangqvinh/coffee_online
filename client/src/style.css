@@ -96,6 +96,23 @@ button {
   min-height: 42px;
   padding: 0 1rem;
 }
+#chat-form {
+  position: absolute;
+  z-index: 1;
+  left: 1rem;
+  bottom: 1rem;
+  display: flex;
+  gap: 0.4rem;
+  margin: 0;
+}
+#chat-input {
+  width: min(42vw, 260px);
+  min-height: 42px;
+  background: #fffdf9dd;
+}
+#chat-form button {
+  min-height: 42px;
+}
 #joystick {
   display: none;
   position: absolute;

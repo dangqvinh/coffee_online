@@ -1,4 +1,4 @@
-import type { ServerMessage } from "@quan-ca-phe/shared";
+import type { PlayerState, ServerMessage } from "@quan-ca-phe/shared";
 import { startCafeGame } from "./game";
 import "./style.css";
 
@@ -12,6 +12,15 @@ const game = document.querySelector<HTMLElement>("#game");
 const leaveButton = document.querySelector<HTMLButtonElement>("#leave-game");
 let socket: WebSocket | undefined;
 let stopGame: (() => void) | undefined;
+let remoteApi: {
+  addRemotePlayer: (state: PlayerState) => void;
+  removeRemotePlayer: (playerId: string) => void;
+  showRemoteChat: (playerId: string, text: string) => void;
+  playRemoteEmote: (playerId: string, emote: "wave" | "jump" | "cheers") => void;
+} | undefined;
+let currentPlayerId = "";
+let lastPositionSent = 0;
+let lastSentPosition = "";
 
 form?.addEventListener("submit", (event) => {
   event.preventDefault();
@@ -27,13 +36,28 @@ form?.addEventListener("submit", (event) => {
   status!.textContent = "Đang kết nối…";
   socket.addEventListener("open", () => {
     status!.textContent = "Đã vào quán";
-    socket?.send(JSON.stringify({ type: "join", name }));
+    socket?.send(JSON.stringify({
+      type: "join",
+      name,
+      config: { skin: "honey", shirt: "teal", hat: "conical", apron: true },
+    }));
     lobby?.classList.add("hidden");
     game?.classList.add("active");
     stopGame = startCafeGame(game!, name, {
       onExit: () => {
         game?.classList.remove("active");
         lobby?.classList.remove("hidden");
+      },
+      onPosition: (x, z, vx, vz) => {
+        const now = performance.now();
+        const position = `${x.toFixed(2)},${z.toFixed(2)},${vx.toFixed(2)},${vz.toFixed(2)}`;
+        if (now - lastPositionSent < 80 || position === lastSentPosition) return;
+        lastPositionSent = now;
+        lastSentPosition = position;
+        socket?.send(JSON.stringify({ type: "position", x, z, vx, vz }));
+      },
+      onRemoteReady: (api) => {
+        remoteApi = api;
       },
     });
   });
@@ -42,6 +66,19 @@ form?.addEventListener("submit", (event) => {
     if (message.type === "welcome" || message.type === "room_count") {
       count!.textContent = `Trong phòng: ${message.people} người`;
     }
+    if (message.type === "welcome") {
+      currentPlayerId = message.playerId;
+      for (const player of message.players) {
+        if (player.id !== currentPlayerId) remoteApi?.addRemotePlayer(player);
+      }
+    }
+    if (message.type === "player_joined" && message.player.id !== currentPlayerId) {
+      remoteApi?.addRemotePlayer(message.player);
+    }
+    if (message.type === "player_update") remoteApi?.addRemotePlayer(message.player);
+    if (message.type === "player_left") remoteApi?.removeRemotePlayer(message.playerId);
+    if (message.type === "chat") remoteApi?.showRemoteChat(message.playerId, message.text);
+    if (message.type === "emote") remoteApi?.playRemoteEmote(message.playerId, message.emote);
     if (message.type === "error") status!.textContent = message.message;
   });
   socket.addEventListener("close", () => {
@@ -56,4 +93,21 @@ leaveButton?.addEventListener("click", () => {
   stopGame?.();
   stopGame = undefined;
   socket?.close();
+});
+
+document.querySelector<HTMLFormElement>("#chat-form")?.addEventListener("submit", (event) => {
+  event.preventDefault();
+  const input = document.querySelector<HTMLInputElement>("#chat-input");
+  const text = input?.value.trim().slice(0, 60) ?? "";
+  if (!text) return;
+  socket?.send(JSON.stringify({ type: "chat", text }));
+  input!.value = "";
+});
+
+window.addEventListener("keydown", (event) => {
+  const emotes = { "1": "wave", "2": "jump", "3": "cheers" } as const;
+  const emote = emotes[event.key as keyof typeof emotes];
+  if (emote && game?.classList.contains("active")) {
+    socket?.send(JSON.stringify({ type: "emote", emote }));
+  }
 });

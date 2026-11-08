@@ -1,7 +1,17 @@
 import * as THREE from "three";
+import type { CharacterConfig, PlayerState } from "@quan-ca-phe/shared";
 
 type GameCallbacks = {
   onExit: () => void;
+  onPosition?: (x: number, z: number, vx: number, vz: number) => void;
+  onChat?: (text: string) => void;
+  onEmote?: (emote: "wave" | "jump" | "cheers") => void;
+  onRemoteReady?: (api: {
+    addRemotePlayer: (state: PlayerState) => void;
+    removeRemotePlayer: (playerId: string) => void;
+    showRemoteChat: (playerId: string, text: string) => void;
+    playRemoteEmote: (playerId: string, emote: "wave" | "jump" | "cheers") => void;
+  }) => void;
 };
 
 const ROOM_WIDTH = 18;
@@ -40,13 +50,6 @@ const PALETTE = {
   plant: "#5d8b63",
   lamp: "#f7d36b",
 } as const;
-
-type CharacterConfig = {
-  skin: keyof typeof SKIN_COLORS;
-  shirt: keyof typeof SHIRT_COLORS;
-  hat: "conical" | "cap" | "none";
-  apron: boolean;
-};
 
 const SKIN_COLORS = {
   honey: PALETTE.skin,
@@ -115,6 +118,7 @@ export function startCafeGame(container: HTMLElement, playerName: string, callba
   const keys = new Set<string>();
   const input = new THREE.Vector2();
   const velocity = new THREE.Vector2();
+  const remotePlayers = new Map<string, { rig: CharacterRig; target: THREE.Vector3; last: THREE.Vector3; chat?: THREE.Sprite; chatUntil: number }>();
   const previousPlayerPosition = player.position.clone();
   const visualPlayerPosition = player.position.clone();
   const cameraLookTarget = new THREE.Vector3();
@@ -230,10 +234,21 @@ export function startCafeGame(container: HTMLElement, playerName: string, callba
     );
     camera.lookAt(cameraLookTarget);
     animatePlayer(player, velocity.length() / MOVEMENT.maxSpeed, time / 1000);
+    callbacks.onPosition?.(player.position.x, player.position.z, velocity.x, velocity.y);
+    for (const remote of remotePlayers.values()) {
+      remote.last.lerp(remote.target, 1 - Math.exp(-14 * delta));
+      remote.rig.position.lerp(remote.last, 1);
+      animatePlayer(remote.rig, remote.rig.userData.velocity.length() / MOVEMENT.maxSpeed, time / 1000);
+      if (remote.chat && time > remote.chatUntil) {
+        remote.rig.remove(remote.chat);
+        remote.chat = undefined;
+      }
+    }
     renderer.render(scene, camera);
     animationFrame = requestAnimationFrame(tick);
   };
   animationFrame = requestAnimationFrame(tick);
+  callbacks.onRemoteReady?.({ addRemotePlayer, removeRemotePlayer, showRemoteChat, playRemoteEmote });
 
   return () => {
     cancelAnimationFrame(animationFrame);
@@ -251,6 +266,49 @@ export function startCafeGame(container: HTMLElement, playerName: string, callba
     renderer.domElement.remove();
     callbacks.onExit();
   };
+
+  function addRemotePlayer(state: PlayerState): void {
+    const existing = remotePlayers.get(state.id);
+    if (existing) {
+      existing.target.set(state.x, 0, state.z);
+      existing.rig.userData.velocity.set(state.vx, -state.vz);
+      return;
+    }
+    const rig = addPlayer(scene, state.name, state.config);
+    rig.position.set(state.x, 0, state.z);
+    rig.userData.velocity.set(state.vx, -state.vz);
+    const remote = { rig, target: rig.position.clone(), last: rig.position.clone(), chatUntil: 0 };
+    remotePlayers.set(state.id, remote);
+  }
+
+  function removeRemotePlayer(playerId: string): void {
+    const remote = remotePlayers.get(playerId);
+    if (!remote) return;
+    scene.remove(remote.rig);
+    remotePlayers.delete(playerId);
+  }
+
+  function showRemoteChat(playerId: string, text: string): void {
+    const remote = remotePlayers.get(playerId);
+    if (!remote) return;
+    if (remote.chat) remote.rig.remove(remote.chat);
+    const chat = makeChatLabel(text);
+    chat.position.set(0, 3.25, 0);
+    remote.chat = chat;
+    remote.rig.add(chat);
+    remote.chatUntil = performance.now() + 3500;
+  }
+
+  function playRemoteEmote(playerId: string, emote: "wave" | "jump" | "cheers"): void {
+    const remote = remotePlayers.get(playerId);
+    if (!remote) return;
+    const amount = emote === "jump" ? 0.35 : 0.15;
+    remote.rig.position.y = amount;
+    window.setTimeout(() => {
+      remote.rig.position.y = 0;
+    }, 260);
+  }
+
 }
 
 function addCafe(scene: THREE.Scene, colliders: THREE.Box3[]): void {
@@ -620,6 +678,25 @@ function makeLabel(text: string): THREE.Sprite {
 
   const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(canvas), transparent: true }));
   sprite.scale.set(2.2, 0.55, 1);
+  return sprite;
+}
+
+function makeChatLabel(text: string): THREE.Sprite {
+  const canvas = document.createElement("canvas");
+  canvas.width = 384;
+  canvas.height = 96;
+  const context = canvas.getContext("2d");
+  if (context) {
+    context.fillStyle = "#fffdf9";
+    context.roundRect(4, 4, 376, 88, 18);
+    context.fill();
+    context.fillStyle = PALETTE.eye;
+    context.font = "24px system-ui";
+    context.textAlign = "center";
+    context.fillText(text.slice(0, 60), 192, 58);
+  }
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(canvas), transparent: true }));
+  sprite.scale.set(2.4, 0.6, 1);
   return sprite;
 }
 

@@ -2,6 +2,8 @@ import {
   isClientMessage,
   isRoomCode,
   MAX_MESSAGE_BYTES,
+  MAX_PLAYERS,
+  type PlayerState,
   type ClientMessage,
   type ServerMessage,
 } from "@quan-ca-phe/shared";
@@ -40,7 +42,8 @@ export default {
 
 export class GameRoom implements DurableObject {
   private readonly state: DurableObjectState;
-  private readonly sockets = new Map<WebSocket, string>();
+  private readonly sockets = new Map<WebSocket, PlayerState>();
+  private readonly lastMessageAt = new Map<WebSocket, number>();
   private roomCode = "";
 
   constructor(state: DurableObjectState) {
@@ -54,8 +57,7 @@ export class GameRoom implements DurableObject {
       return new Response("Cần kết nối WebSocket.", { status: 426 });
     }
 
-    const people = this.sockets.size;
-    if (people >= 6) {
+    if (this.sockets.size >= MAX_PLAYERS) {
       return Response.json({ error: "Phòng đã đủ 6 người." }, { status: 409 });
     }
 
@@ -63,12 +65,21 @@ export class GameRoom implements DurableObject {
     const [client, server] = Object.values(pair) as [WebSocket, WebSocket];
     const playerId = crypto.randomUUID();
     this.state.acceptWebSocket(server);
-    this.sockets.set(server, playerId);
+    this.sockets.set(server, {
+      id: playerId,
+      name: "Khách mới",
+      config: { skin: "honey", shirt: "teal", hat: "conical", apron: true },
+      x: 0,
+      z: 3.8,
+      vx: 0,
+      vz: 0,
+    });
     this.send(server, {
       type: "welcome",
       playerId,
       roomCode: this.roomCode,
       people: this.sockets.size,
+      players: [...this.sockets.values()],
     });
     this.broadcast({ type: "room_count", people: this.sockets.size }, server);
     return new Response(null, { status: 101, webSocket: client });
@@ -95,19 +106,52 @@ export class GameRoom implements DurableObject {
     }
 
     const clientMessage = parsed as ClientMessage;
+    const player = this.sockets.get(socket);
+    if (!player) return;
+    const now = Date.now();
+    const previousMessageAt = this.lastMessageAt.get(socket) ?? 0;
+    const minimumInterval = clientMessage.type === "position" ? 65 : clientMessage.type === "chat" ? 500 : 100;
+    if (now - previousMessageAt < minimumInterval) return;
+    this.lastMessageAt.set(socket, now);
+
+    if (clientMessage.type === "join") {
+      player.name = clientMessage.name.replace(/[\u0000-\u001f\u007f]/g, "").trim().slice(0, 16);
+      player.config = clientMessage.config;
+      this.send(socket, { type: "welcome", playerId: player.id, roomCode: this.roomCode, people: this.sockets.size, players: [...this.sockets.values()] });
+      this.broadcast({ type: "player_joined", player }, socket);
+      return;
+    }
+    if (clientMessage.type === "position") {
+      player.x = clamp(clientMessage.x, -8.5, 8.5);
+      player.z = clamp(clientMessage.z, -5.5, 5.5);
+      player.vx = clamp(clientMessage.vx, -6, 6);
+      player.vz = clamp(clientMessage.vz, -6, 6);
+      this.broadcast({ type: "player_update", player }, socket);
+      return;
+    }
+    if (clientMessage.type === "chat") {
+      this.broadcast({ type: "chat", playerId: player.id, text: cleanText(clientMessage.text, 60) });
+      return;
+    }
+    if (clientMessage.type === "emote") {
+      this.broadcast({ type: "emote", playerId: player.id, emote: clientMessage.emote });
+      return;
+    }
     if (clientMessage.type === "ping") {
       this.send(socket, { type: "pong" });
     }
   }
 
   webSocketClose(socket: WebSocket): void {
+    const player = this.sockets.get(socket);
     this.sockets.delete(socket);
+    this.lastMessageAt.delete(socket);
+    if (player) this.broadcast({ type: "player_left", playerId: player.id });
     this.broadcast({ type: "room_count", people: this.sockets.size });
   }
 
   webSocketError(socket: WebSocket): void {
-    this.sockets.delete(socket);
-    this.broadcast({ type: "room_count", people: this.sockets.size });
+    this.webSocketClose(socket);
   }
 
   private send(socket: WebSocket, message: ServerMessage): void {
@@ -123,4 +167,13 @@ export class GameRoom implements DurableObject {
       if (socket !== except) this.send(socket, message);
     }
   }
+
+}
+
+function clamp(value: number, minimum: number, maximum: number): number {
+  return Math.min(Math.max(value, minimum), maximum);
+}
+
+function cleanText(value: string, maximumLength: number): string {
+  return value.replace(/[\u0000-\u001f\u007f]/g, "").trim().slice(0, maximumLength);
 }
