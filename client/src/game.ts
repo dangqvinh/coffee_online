@@ -9,6 +9,60 @@ const ROOM_DEPTH = 12;
 const PLAYER_RADIUS = 0.38;
 const MOVE_SPEED = 4;
 
+const PALETTE = {
+  skin: "#f2bd88",
+  skinDark: "#d98f68",
+  shirt: "#5b8f82",
+  apron: "#f1c276",
+  hair: "#59443b",
+  hat: "#bd6b39",
+  eye: "#3d2c22",
+  blush: "#e98f7d",
+  shadow: "#6d493a",
+  marker: "#f7d36b",
+} as const;
+
+type CharacterConfig = {
+  skin: keyof typeof SKIN_COLORS;
+  shirt: keyof typeof SHIRT_COLORS;
+  hat: "conical" | "cap" | "none";
+  apron: boolean;
+};
+
+const SKIN_COLORS = {
+  honey: PALETTE.skin,
+  peach: "#e7a477",
+  cocoa: "#a96f53",
+  rose: "#d98f82",
+  cream: "#f6cca2",
+} as const;
+
+const SHIRT_COLORS = {
+  teal: PALETTE.shirt,
+  tomato: "#c76654",
+  blue: "#5f7fa8",
+  leaf: "#769b68",
+  plum: "#806b9b",
+  yellow: "#d8a34f",
+  coral: "#d88870",
+  navy: "#4e6878",
+} as const;
+
+type CharacterRig = THREE.Group & {
+  userData: {
+    body: THREE.Group;
+    head: THREE.Group;
+    leftArm: THREE.Group;
+    rightArm: THREE.Group;
+    leftLeg: THREE.Group;
+    rightLeg: THREE.Group;
+    eyeLeft: THREE.Mesh;
+    eyeRight: THREE.Mesh;
+    shadow: THREE.Mesh;
+    blinkTime: number;
+  };
+};
+
 export function startCafeGame(container: HTMLElement, playerName: string, callbacks: GameCallbacks): () => void {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color("#f6c98c");
@@ -105,6 +159,7 @@ export function startCafeGame(container: HTMLElement, playerName: string, callba
     movement.add(input);
     if (movement.lengthSq() > 1) movement.normalize();
     moveWithCollisions(player, movement, delta, colliders);
+    animatePlayer(player, movement.length(), time / 1000);
     camera.position.x = player.position.x + 12;
     camera.position.z = player.position.z + 14;
     camera.lookAt(player.position.x, 0, player.position.z);
@@ -190,26 +245,91 @@ function addBlock(scene: THREE.Scene, colliders: THREE.Box3[], x: number, y: num
   colliders.push(new THREE.Box3(new THREE.Vector3(x - width / 2, 0, z - depth / 2), new THREE.Vector3(x + width / 2, height + 0.1, z + depth / 2)));
 }
 
-function addPlayer(scene: THREE.Scene, name: string): THREE.Group {
-  const player = new THREE.Group();
-  const shirt = mesh(new THREE.CapsuleGeometry(0.42, 0.7, 4, 8), "#5b8f82");
-  shirt.position.y = 0.9;
+function addPlayer(scene: THREE.Scene, name: string, config: CharacterConfig = {
+  skin: "honey",
+  shirt: "teal",
+  hat: "conical",
+  apron: true,
+}): CharacterRig {
+  const player = new THREE.Group() as CharacterRig;
+  const body = new THREE.Group();
+  body.position.y = 0.92;
+  player.add(body);
+  const shirt = mesh(new THREE.CapsuleGeometry(0.42, 0.62, 4, 8), SHIRT_COLORS[config.shirt]);
   shirt.castShadow = true;
-  player.add(shirt);
-  const head = mesh(new THREE.SphereGeometry(0.42, 12, 8), "#f2bd88");
-  head.position.y = 1.75;
-  head.castShadow = true;
+  body.add(shirt);
+  if (config.apron) {
+    const apron = mesh(new THREE.BoxGeometry(0.55, 0.55, 0.06), PALETTE.apron);
+    apron.position.set(0, -0.02, 0.39);
+    apron.castShadow = true;
+    body.add(apron);
+  }
+
+  const head = new THREE.Group();
+  head.position.y = 1.72;
   player.add(head);
-  const hat = mesh(new THREE.ConeGeometry(0.48, 0.35, 8), "#bd6b39");
-  hat.position.y = 2.25;
-  hat.castShadow = true;
-  player.add(hat);
+  const face = mesh(new THREE.SphereGeometry(0.48, 12, 8), SKIN_COLORS[config.skin]);
+  face.scale.set(1, 1.05, 0.9);
+  face.castShadow = true;
+  head.add(face);
+  const eyeGeometry = new THREE.SphereGeometry(0.055, 8, 6);
+  const eyeLeft = mesh(eyeGeometry, PALETTE.eye);
+  const eyeRight = mesh(eyeGeometry, PALETTE.eye);
+  eyeLeft.position.set(-0.17, 0.05, 0.42);
+  eyeRight.position.set(0.17, 0.05, 0.42);
+  head.add(eyeLeft, eyeRight);
+  for (const x of [-0.29, 0.29]) {
+    const cheek = mesh(new THREE.SphereGeometry(0.075, 8, 6), PALETTE.blush);
+    cheek.scale.set(1.3, 0.65, 0.4);
+    cheek.position.set(x, -0.12, 0.42);
+    head.add(cheek);
+  }
+
+  if (config.hat === "conical") {
+    const hat = mesh(new THREE.ConeGeometry(0.6, 0.42, 8), PALETTE.hat);
+    hat.position.y = 0.52;
+    hat.rotation.x = Math.PI;
+    head.add(hat);
+  } else if (config.hat === "cap") {
+    const cap = mesh(new THREE.SphereGeometry(0.5, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2), PALETTE.hat);
+    cap.position.y = 0.38;
+    head.add(cap);
+  }
+
+  const leftArm = addLimb(body, -0.53, 0.02, 0.22, SHIRT_COLORS[config.shirt]);
+  const rightArm = addLimb(body, 0.53, 0.02, 0.22, SHIRT_COLORS[config.shirt]);
+  const leftLeg = addLimb(player, -0.2, 0.34, -0.03, PALETTE.skinDark);
+  const rightLeg = addLimb(player, 0.2, 0.34, -0.03, PALETTE.skinDark);
+  const shadow = mesh(new THREE.CircleGeometry(0.62, 16), PALETTE.shadow);
+  shadow.rotation.x = -Math.PI / 2;
+  shadow.position.y = 0.012;
+  shadow.scale.set(1, 0.55, 1);
+  const shadowMaterial = shadow.material as THREE.MeshStandardMaterial;
+  shadowMaterial.transparent = true;
+  shadowMaterial.opacity = 0.3;
+  player.add(shadow);
+  const marker = mesh(new THREE.RingGeometry(0.58, 0.68, 20), PALETTE.marker);
+  marker.rotation.x = -Math.PI / 2;
+  marker.position.y = 0.025;
+  player.add(marker);
   const label = makeLabel(name);
-  label.position.set(0, 2.9, 0);
+  label.position.set(0, 2.75, 0);
   player.add(label);
+  player.userData = { body, head, leftArm, rightArm, leftLeg, rightLeg, eyeLeft, eyeRight, shadow, blinkTime: 0 };
   player.position.set(0, 0, 3.8);
   scene.add(player);
   return player;
+}
+
+function addLimb(parent: THREE.Object3D, x: number, y: number, z: number, color: string): THREE.Group {
+  const limb = new THREE.Group();
+  limb.position.set(x, y, z);
+  const shape = mesh(new THREE.CapsuleGeometry(0.13, 0.42, 3, 6), color);
+  shape.position.y = -0.28;
+  shape.castShadow = true;
+  limb.add(shape);
+  parent.add(limb);
+  return limb;
 }
 
 function makeLabel(text: string): THREE.Sprite {
@@ -218,14 +338,37 @@ function makeLabel(text: string): THREE.Sprite {
   canvas.height = 64;
   const context = canvas.getContext("2d");
   if (context) {
-    context.fillStyle = "#3d2c22";
+    context.strokeStyle = "#fff4d6";
+    context.lineWidth = 8;
     context.font = "bold 28px system-ui";
     context.textAlign = "center";
+    context.strokeText(text.slice(0, 16), 128, 40);
+    context.fillStyle = PALETTE.eye;
     context.fillText(text.slice(0, 16), 128, 40);
   }
+
   const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(canvas), transparent: true }));
   sprite.scale.set(2.2, 0.55, 1);
   return sprite;
+}
+
+function animatePlayer(player: CharacterRig, inputMagnitude: number, seconds: number): void {
+  const { body, head, leftArm, rightArm, leftLeg, rightLeg, eyeLeft, eyeRight } = player.userData;
+  const walking = Math.min(inputMagnitude, 1);
+  const stride = seconds * 10;
+  const swing = Math.sin(stride) * 0.55 * walking;
+  body.position.y = 0.92 + Math.sin(seconds * 5) * 0.025 * walking;
+  body.rotation.z = THREE.MathUtils.lerp(body.rotation.z, -swing * 0.12, 0.15);
+  leftLeg.rotation.x = swing;
+  rightLeg.rotation.x = -swing;
+  leftArm.rotation.x = -swing * 0.8;
+  rightArm.rotation.x = swing * 0.8;
+  head.rotation.z = THREE.MathUtils.lerp(head.rotation.z, body.rotation.z * 0.5, 0.15);
+  player.userData.blinkTime += 1 / 60;
+  if (player.userData.blinkTime > 3.5) player.userData.blinkTime = -0.12;
+  const blink = player.userData.blinkTime > 0 && player.userData.blinkTime < 0.12;
+  eyeLeft.scale.y = blink ? 0.12 : 1;
+  eyeRight.scale.y = blink ? 0.12 : 1;
 }
 
 function mesh(geometry: THREE.BufferGeometry, color: string): THREE.Mesh {
