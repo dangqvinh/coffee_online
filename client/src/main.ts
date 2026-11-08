@@ -1,4 +1,4 @@
-import type { CustomerState, PlayerState, ServerMessage } from "@quan-ca-phe/shared";
+import type { CustomerState, Ingredient, PlayerState, ServerMessage } from "@quan-ca-phe/shared";
 import { startCafeGame } from "./game";
 import "./style.css";
 
@@ -10,6 +10,12 @@ const count = document.querySelector<HTMLElement>("#count");
 const lobby = document.querySelector<HTMLElement>("#lobby");
 const game = document.querySelector<HTMLElement>("#game");
 const leaveButton = document.querySelector<HTMLButtonElement>("#leave-game");
+const adminPinInput = document.querySelector<HTMLInputElement>("#admin-pin");
+const ingredientList = document.querySelector<HTMLElement>("#ingredient-list");
+const brewForm = document.querySelector<HTMLFormElement>("#brew-form");
+const adminPanel = document.querySelector<HTMLElement>("#admin-panel");
+const brewerPlayer = document.querySelector<HTMLSelectElement>("#brewer-player");
+const toggleBrewer = document.querySelector<HTMLButtonElement>("#toggle-brewer");
 let socket: WebSocket | undefined;
 let stopGame: (() => void) | undefined;
 let remoteApi: {
@@ -27,6 +33,7 @@ let currentPlayerId = "";
 let startPosition = { x: 0, z: 3.8 };
 let lastPositionSent = 0;
 let lastSentPosition = "";
+let knownPlayers: PlayerState[] = [];
 
 form?.addEventListener("submit", (event) => {
   event.preventDefault();
@@ -73,6 +80,7 @@ form?.addEventListener("submit", (event) => {
     socket?.send(JSON.stringify({
       type: "join",
       name,
+      adminPin: adminPinInput?.value ?? "",
       config: { skin: "honey", shirt: "teal", hat: "conical", apron: true },
     }));
   });
@@ -83,6 +91,9 @@ form?.addEventListener("submit", (event) => {
     }
     if (message.type === "welcome") {
       currentPlayerId = message.playerId;
+      knownPlayers = message.players;
+      setupIngredients(message.ingredients);
+      setupAdmin(message.players);
       const localPlayer = message.players.find((player) => player.id === currentPlayerId);
       if (localPlayer) {
         startPosition = { x: localPlayer.x, z: localPlayer.z };
@@ -94,9 +105,15 @@ form?.addEventListener("submit", (event) => {
       for (const customer of message.customers) customerApi?.addCustomer(customer);
     }
     if (message.type === "player_joined" && message.player.id !== currentPlayerId) {
+      knownPlayers = [...knownPlayers.filter((player) => player.id !== message.player.id), message.player];
+      setupAdmin(knownPlayers);
       remoteApi?.addRemotePlayer(message.player);
     }
-    if (message.type === "player_update") remoteApi?.addRemotePlayer(message.player);
+    if (message.type === "player_update") {
+      knownPlayers = knownPlayers.map((player) => player.id === message.player.id ? message.player : player);
+      setupAdmin(knownPlayers);
+      remoteApi?.addRemotePlayer(message.player);
+    }
     if (message.type === "player_left") remoteApi?.removeRemotePlayer(message.playerId);
     if (message.type === "chat") remoteApi?.showRemoteChat(message.playerId, message.text);
     if (message.type === "emote") remoteApi?.playRemoteEmote(message.playerId, message.emote);
@@ -104,6 +121,20 @@ form?.addEventListener("submit", (event) => {
     if (message.type === "customer_update") customerApi?.updateCustomer(message.customer);
     if (message.type === "customer_left") customerApi?.removeCustomer(message.customerId);
     if (message.type === "error") status!.textContent = message.message;
+  });
+
+  brewForm?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const name = document.querySelector<HTMLInputElement>("#drink-name")?.value.trim() ?? "";
+    const note = document.querySelector<HTMLInputElement>("#drink-note")?.value.trim() ?? "";
+    const ingredients = [...document.querySelectorAll<HTMLInputElement>("#ingredient-list input:checked")].map((input) => input.value);
+    if (name && ingredients.length) socket?.send(JSON.stringify({ type: "brew", name, note, ingredients }));
+  });
+
+  toggleBrewer?.addEventListener("click", () => {
+    const playerId = brewerPlayer?.value;
+    const player = knownPlayers.find((item) => item.id === playerId);
+    if (playerId && player) socket?.send(JSON.stringify({ type: "set_brewer", playerId, canBrew: !player.canBrew }));
   });
   socket.addEventListener("close", () => {
     status!.textContent = "Đã ngắt kết nối";
@@ -135,3 +166,29 @@ window.addEventListener("keydown", (event) => {
     socket?.send(JSON.stringify({ type: "emote", emote }));
   }
 });
+
+function setupIngredients(ingredients: Ingredient[]): void {
+  if (!ingredientList || ingredientList.childElementCount) return;
+  for (const ingredient of ingredients) {
+    const label = document.createElement("label");
+    const input = document.createElement("input");
+    input.type = "checkbox";
+    input.value = ingredient.id;
+    label.append(input, document.createTextNode(ingredient.name));
+    ingredientList.append(label);
+  }
+}
+
+function setupAdmin(players: PlayerState[]): void {
+  const local = players.find((player) => player.id === currentPlayerId);
+  if (!local?.isAdmin || !adminPanel || !brewerPlayer) return;
+  adminPanel.hidden = false;
+  brewerPlayer.replaceChildren();
+  for (const player of players) {
+    if (player.id === currentPlayerId) continue;
+    const option = document.createElement("option");
+    option.value = player.id;
+    option.textContent = `${player.name} (${player.canBrew ? "được pha" : "chưa được pha"})`;
+    brewerPlayer.append(option);
+  }
+}

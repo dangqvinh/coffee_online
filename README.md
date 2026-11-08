@@ -55,3 +55,13 @@ npx wrangler tail coffee-online
 ```
 
 WebSocket M1 dùng đường dẫn `/room/<ma-phong>/ws`. Client dev đã proxy đường dẫn này sang Worker local.
+
+## M5: admin và pha đồ uống
+
+Khi vào phòng lần đầu, nhập một PIN admin để trở thành chủ quán. PIN được
+lưu dưới dạng hash trong Durable Object; không gửi qua broadcast. Những lần
+sau dùng cùng PIN để lấy lại quyền admin.
+
+Admin có thể cấp hoặc thu quyền pha chế trong bảng **Phân công pha chế**.
+Người được cấp quyền chọn nguyên liệu tự do, đặt tên món và ghi chú. Coins và
+menu đồ uống được lưu trong Durable Object.

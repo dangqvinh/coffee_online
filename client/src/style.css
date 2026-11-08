@@ -113,6 +113,46 @@ button {
 #chat-form button {
   min-height: 42px;
 }
+#brew-form,
+#admin-panel {
+  position: absolute;
+  z-index: 1;
+  right: 1rem;
+  bottom: 1rem;
+  display: grid;
+  gap: 0.4rem;
+  width: min(45vw, 280px);
+  padding: 0.8rem;
+  border-radius: 14px;
+  background: #fffdf9dd;
+  box-shadow: 0 5px 20px #7d573622;
+}
+#brew-form input,
+#brew-form button,
+#admin-panel select,
+#admin-panel button {
+  min-height: 38px;
+}
+#ingredient-list {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.25rem;
+  max-height: 130px;
+  overflow: auto;
+  font-size: 0.8rem;
+}
+#ingredient-list label {
+  display: flex;
+  gap: 0.25rem;
+  align-items: center;
+  font-weight: 500;
+}
+#admin-panel {
+  right: auto;
+  left: 1rem;
+  bottom: 4.7rem;
+  width: min(45vw, 240px);
+}
 #joystick {
   display: none;
   position: absolute;

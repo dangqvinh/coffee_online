@@ -5,9 +5,11 @@ import {
   MAX_PLAYERS,
   type PlayerState,
   type CustomerState,
+  type DrinkState,
   type ClientMessage,
   type ServerMessage,
 } from "@quan-ca-phe/shared";
+import { INGREDIENTS, scoreDrink } from "@quan-ca-phe/shared/game-data";
 
 export interface Env {
   GAME_ROOMS: DurableObjectNamespace;
@@ -47,10 +49,15 @@ export class GameRoom implements DurableObject {
   private readonly lastMessageAt = new Map<WebSocket, number>();
   private readonly customers = new Map<string, CustomerState>();
   private nextCustomerAt = 0;
+  private readonly drinks: DrinkState[] = [];
+  private coins = 0;
+  private ownerPinHash = "";
+  private readonly progressReady: Promise<void>;
   private roomCode = "";
 
   constructor(state: DurableObjectState) {
     this.state = state;
+    this.progressReady = this.loadProgress();
   }
 
   async fetch(request: Request): Promise<Response> {
@@ -77,12 +84,14 @@ export class GameRoom implements DurableObject {
       z: spawn.z,
       vx: 0,
       vz: 0,
+      isAdmin: false,
+      canBrew: false,
     });
     this.broadcast({ type: "room_count", people: this.sockets.size }, server);
     return new Response(null, { status: 101, webSocket: client });
   }
 
-  webSocketMessage(socket: WebSocket, message: string | ArrayBuffer): void {
+  async webSocketMessage(socket: WebSocket, message: string | ArrayBuffer): Promise<void> {
     const bytes =
       typeof message === "string" ? encoder.encode(message).byteLength : message.byteLength;
     if (bytes > MAX_MESSAGE_BYTES) {
@@ -112,9 +121,24 @@ export class GameRoom implements DurableObject {
     this.lastMessageAt.set(socket, now);
 
     if (clientMessage.type === "join") {
+      await this.progressReady;
+      const pinHash = await hashPin(clientMessage.adminPin);
+      if (!this.ownerPinHash) {
+        if (!clientMessage.adminPin) {
+          this.send(socket, { type: "error", message: "Chủ phòng cần đặt PIN admin." });
+          return;
+        }
+        this.ownerPinHash = pinHash;
+        await this.state.storage.put("ownerPinHash", this.ownerPinHash);
+        player.isAdmin = true;
+        player.canBrew = true;
+      } else if (pinHash && pinHash === this.ownerPinHash) {
+        player.isAdmin = true;
+        player.canBrew = true;
+      }
       player.name = clientMessage.name.replace(/[\u0000-\u001f\u007f]/g, "").trim().slice(0, 16);
       player.config = clientMessage.config;
-      this.send(socket, { type: "welcome", playerId: player.id, roomCode: this.roomCode, people: this.sockets.size, players: [...this.sockets.values()], customers: [...this.customers.values()] });
+      this.send(socket, { type: "welcome", playerId: player.id, roomCode: this.roomCode, people: this.sockets.size, players: [...this.sockets.values()], customers: [...this.customers.values()], ingredients: INGREDIENTS, coins: this.coins, drinks: this.drinks });
       this.broadcast({ type: "player_joined", player }, socket);
       this.ensureCustomerAlarm();
       return;
@@ -133,6 +157,38 @@ export class GameRoom implements DurableObject {
     }
     if (clientMessage.type === "emote") {
       this.broadcast({ type: "emote", playerId: player.id, emote: clientMessage.emote });
+      return;
+    }
+    if (clientMessage.type === "set_brewer") {
+      if (!player.isAdmin) return;
+      const target = [...this.sockets.values()].find((item) => item.id === clientMessage.playerId);
+      if (!target) return;
+      target.canBrew = clientMessage.canBrew;
+      this.broadcast({ type: "player_update", player: target });
+      return;
+    }
+    if (clientMessage.type === "brew") {
+      if (!player.canBrew) {
+        this.send(socket, { type: "error", message: "Bạn chưa được phân công pha chế." });
+        return;
+      }
+      const validIngredients = clientMessage.ingredients.filter((id) => INGREDIENTS.some((item) => item.id === id));
+      if (!validIngredients.length) return;
+      const result = scoreDrink(validIngredients, [...this.customers.values()][0]);
+      const drink: DrinkState = {
+        id: crypto.randomUUID(),
+        inventor: player.name,
+        name: cleanText(clientMessage.name, 32),
+        note: cleanText(clientMessage.note, 120),
+        ingredients: validIngredients,
+        score: result.score,
+        coins: result.coins,
+      };
+      this.drinks.push(drink);
+      this.coins += result.coins;
+      await this.state.storage.put("coins", this.coins);
+      await this.state.storage.put("drinks", this.drinks);
+      this.broadcast({ type: "progress", coins: this.coins, drinks: this.drinks });
       return;
     }
     if (clientMessage.type === "ping") {
@@ -193,6 +249,12 @@ export class GameRoom implements DurableObject {
     }
   }
 
+  private async loadProgress(): Promise<void> {
+    this.ownerPinHash = (await this.state.storage.get<string>("ownerPinHash")) ?? "";
+    this.coins = (await this.state.storage.get<number>("coins")) ?? 0;
+    const storedDrinks = await this.state.storage.get<DrinkState[]>("drinks");
+    if (storedDrinks) this.drinks.push(...storedDrinks);
+  }
 }
 
 function spawnPosition(playerIndex: number): { x: number; z: number } {
@@ -213,6 +275,13 @@ function clamp(value: number, minimum: number, maximum: number): number {
 
 function cleanText(value: string, maximumLength: number): string {
   return value.replace(/[\u0000-\u001f\u007f]/g, "").trim().slice(0, maximumLength);
+}
+
+async function hashPin(pin: string): Promise<string> {
+  if (!pin) return "";
+  const data = new TextEncoder().encode(pin);
+  const digest = await crypto.subtle.digest("SHA-256", data);
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
 function createCustomer(customers: Map<string, CustomerState>, now: number): CustomerState {

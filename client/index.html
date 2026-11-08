@@ -19,6 +19,10 @@
           Mã phòng
           <input id="room" maxlength="24" pattern="[a-z0-9-]+" value="phong-nho" required />
         </label>
+        <label>
+          PIN chủ quán (tùy chọn)
+          <input id="admin-pin" type="password" maxlength="32" autocomplete="off" placeholder="Đặt PIN lần đầu vào phòng" />
+        </label>
         <button type="submit">Vào quán</button>
       </form>
       <p id="status" role="status">Chưa kết nối</p>
@@ -37,6 +41,18 @@
         <input id="chat-input" maxlength="60" placeholder="Nói gì đó…" aria-label="Tin nhắn" />
         <button type="submit">Gửi</button>
       </form>
+      <form id="brew-form">
+        <strong>Pha món tự do</strong>
+        <input id="drink-name" maxlength="32" placeholder="Tên món mới" required />
+        <input id="drink-note" maxlength="120" placeholder="Ghi chú cho khách" />
+        <div id="ingredient-list"></div>
+        <button type="submit">Pha đồ uống</button>
+      </form>
+      <div id="admin-panel" hidden>
+        <strong>Phân công pha chế</strong>
+        <select id="brewer-player"></select>
+        <button id="toggle-brewer" type="button">Cho phép pha</button>
+      </div>
       <button id="leave-game" type="button">Rời quán</button>
     </section>
     <script type="module" src="/src/main.ts"></script>
