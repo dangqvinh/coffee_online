@@ -6,8 +6,8 @@
     <title>Quán Cà Phê Nhà Mình</title>
   </head>
   <body>
-    <main>
-      <p class="eyebrow">M1 · Kết nối phòng</p>
+    <main id="lobby">
+      <p class="eyebrow">M2 · Căn quán 3D</p>
       <h1>Quán Cà Phê Nhà Mình</h1>
       <p>Chào mừng bạn đến căn quán nhỏ của chúng ta.</p>
       <form id="join-form">
@@ -24,6 +24,17 @@
       <p id="status" role="status">Chưa kết nối</p>
       <p id="count">Trong phòng: 0 người</p>
     </main>
+    <section id="game" aria-label="Không gian quán cà phê">
+      <div id="game-hud">
+        <strong>Quán Cà Phê Nhà Mình</strong>
+        <span>WASD / phím mũi tên để di chuyển</span>
+      </div>
+      <div id="joystick" aria-label="Cần điều khiển di động">
+        <div id="joystick-stick"></div>
+      </div>
+      <button id="action-button" type="button">Tương tác</button>
+      <button id="leave-game" type="button">Rời quán</button>
+    </section>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

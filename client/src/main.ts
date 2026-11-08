@@ -1,4 +1,5 @@
 import type { ServerMessage } from "@quan-ca-phe/shared";
+import { startCafeGame } from "./game";
 import "./style.css";
 
 const form = document.querySelector<HTMLFormElement>("#join-form");
@@ -6,7 +7,11 @@ const nameInput = document.querySelector<HTMLInputElement>("#name");
 const roomInput = document.querySelector<HTMLInputElement>("#room");
 const status = document.querySelector<HTMLElement>("#status");
 const count = document.querySelector<HTMLElement>("#count");
+const lobby = document.querySelector<HTMLElement>("#lobby");
+const game = document.querySelector<HTMLElement>("#game");
+const leaveButton = document.querySelector<HTMLButtonElement>("#leave-game");
 let socket: WebSocket | undefined;
+let stopGame: (() => void) | undefined;
 
 form?.addEventListener("submit", (event) => {
   event.preventDefault();
@@ -23,6 +28,14 @@ form?.addEventListener("submit", (event) => {
   socket.addEventListener("open", () => {
     status!.textContent = "Đã vào quán";
     socket?.send(JSON.stringify({ type: "join", name }));
+    lobby?.classList.add("hidden");
+    game?.classList.add("active");
+    stopGame = startCafeGame(game!, name, {
+      onExit: () => {
+        game?.classList.remove("active");
+        lobby?.classList.remove("hidden");
+      },
+    });
   });
   socket.addEventListener("message", (event) => {
     const message = JSON.parse(event.data) as ServerMessage;
@@ -37,4 +50,10 @@ form?.addEventListener("submit", (event) => {
   socket.addEventListener("error", () => {
     status!.textContent = "Không thể kết nối phòng";
   });
+});
+
+leaveButton?.addEventListener("click", () => {
+  stopGame?.();
+  stopGame = undefined;
+  socket?.close();
 });

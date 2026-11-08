@@ -8,6 +8,7 @@ body {
   min-height: 100vh;
   display: grid;
   place-items: center;
+  overflow: hidden;
 }
 main {
   width: min(90vw, 520px);
@@ -17,11 +18,25 @@ main {
   background: #fffdf9;
   box-shadow: 0 16px 50px #7d573622;
 }
-.eyebrow { color: #ad6d38; font-weight: 700; }
-h1 { margin-bottom: 0.5rem; }
-form { display: grid; gap: 1rem; margin-top: 2rem; }
-label { display: grid; gap: 0.4rem; font-weight: 650; }
-input, button {
+.eyebrow {
+  color: #ad6d38;
+  font-weight: 700;
+}
+h1 {
+  margin-bottom: 0.5rem;
+}
+form {
+  display: grid;
+  gap: 1rem;
+  margin-top: 2rem;
+}
+label {
+  display: grid;
+  gap: 0.4rem;
+  font-weight: 650;
+}
+input,
+button {
   font: inherit;
   min-height: 46px;
   padding: 0 0.8rem;
@@ -29,5 +44,106 @@ input, button {
   border-radius: 12px;
   box-sizing: border-box;
 }
-button { cursor: pointer; background: #bd6b39; color: white; border: 0; font-weight: 700; }
-#status { margin-top: 1.5rem; font-weight: 700; }
+button {
+  cursor: pointer;
+  background: #bd6b39;
+  color: white;
+  border: 0;
+  font-weight: 700;
+}
+#status {
+  margin-top: 1.5rem;
+  font-weight: 700;
+}
+.hidden {
+  display: none;
+}
+#game {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: #f6c98c;
+}
+#game.active {
+  display: block;
+}
+#game canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+#game-hud {
+  position: absolute;
+  z-index: 1;
+  top: 1rem;
+  left: 1rem;
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.75rem 1rem;
+  border-radius: 14px;
+  color: #3d2c22;
+  background: #fffdf9dd;
+  box-shadow: 0 5px 20px #7d573622;
+}
+#game-hud span {
+  font-size: 0.85rem;
+}
+#leave-game {
+  position: absolute;
+  z-index: 1;
+  top: 1rem;
+  right: 1rem;
+  min-height: 42px;
+  padding: 0 1rem;
+}
+#joystick {
+  display: none;
+  position: absolute;
+  z-index: 1;
+  left: 1.25rem;
+  bottom: 1.25rem;
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  background: #fffdf966;
+  border: 2px solid #fffdf9aa;
+  touch-action: none;
+}
+#joystick-stick {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: #bd6b39dd;
+  transform: translate(-50%, -50%);
+}
+#action-button {
+  display: none;
+  position: absolute;
+  z-index: 1;
+  right: 1.25rem;
+  bottom: 1.5rem;
+  width: 92px;
+  height: 92px;
+  border-radius: 50%;
+  background: #bd6b39dd;
+  border: 3px solid #fffdf9aa;
+}
+@media (pointer: coarse) {
+  #joystick {
+    display: block;
+  }
+  #action-button {
+    display: block;
+  }
+  #game-hud span {
+    display: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  #game canvas {
+    image-rendering: optimizeSpeed;
+  }
+}
