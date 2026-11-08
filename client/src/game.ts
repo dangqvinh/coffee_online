@@ -96,13 +96,19 @@ export function startCafeGame(container: HTMLElement, playerName: string, callba
   let previousTime = performance.now();
 
   const onKeyDown = (event: KeyboardEvent) => {
-    keys.add(event.key.toLowerCase());
+    const key = event.key.toLowerCase();
+    if (["w", "a", "s", "d", "arrowup", "arrowdown", "arrowleft", "arrowright"].includes(key)) {
+      event.preventDefault();
+      keys.add(key);
+    }
   };
   const onKeyUp = (event: KeyboardEvent) => {
     keys.delete(event.key.toLowerCase());
   };
+  const clearKeys = () => keys.clear();
   window.addEventListener("keydown", onKeyDown);
   window.addEventListener("keyup", onKeyUp);
+  window.addEventListener("blur", clearKeys);
 
   const joystick = document.querySelector<HTMLElement>("#joystick");
   const stick = document.querySelector<HTMLElement>("#joystick-stick");
@@ -172,6 +178,7 @@ export function startCafeGame(container: HTMLElement, playerName: string, callba
     cancelAnimationFrame(animationFrame);
     window.removeEventListener("keydown", onKeyDown);
     window.removeEventListener("keyup", onKeyUp);
+    window.removeEventListener("blur", clearKeys);
     window.removeEventListener("resize", resize);
     joystick?.removeEventListener("pointerdown", onJoystickStart);
     joystick?.removeEventListener("pointermove", onJoystickMove);
