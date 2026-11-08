@@ -8,3 +8,8 @@ worker/.wrangler/
 .env.*
 !.env.example
 *.log
+*.tsbuildinfo
+shared/src/*.js
+shared/src/*.d.ts
+worker/src/*.js
+worker/src/*.d.ts
